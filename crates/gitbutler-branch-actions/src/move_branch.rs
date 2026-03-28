@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result};
 use but_core::ref_metadata::StackId;
 use but_ctx::{Context, access::RepoExclusive};
 use but_rebase::{Rebase, RebaseStep};
-use but_workspace::legacy::stack_ext::StackExt;
+use but_workspace::legacy::{check_rebase_for_conflicts, stack_ext::StackExt};
 use gitbutler_reference::{LocalRefname, Refname};
 use gitbutler_stack::{StackBranch, VirtualBranchesHandle};
 use gitbutler_workspace::branch_trees::{WorkspaceState, update_uncommitted_changes};
@@ -19,6 +19,57 @@ pub struct MoveBranchResult {
     pub deleted_stacks: Vec<StackId>,
     /// These are the stacks that were unapplied as a result of the move.
     pub unapplied_stacks: Vec<StackId>,
+}
+
+/// Pre-flight check for cross-stack branch moves.
+///
+/// Checks both sides of the move:
+/// 1. **Source**: rebases remaining source commits without the moved branch —
+///    bails if any would conflict (they depend on the branch being moved away).
+/// 2. **Destination**: rebases the moved branch commits onto the target branch head —
+///    bails if any would conflict at the insertion point.
+///
+/// Must be called before `create_snapshot` so a rejection leaves no side-effects.
+pub(crate) fn preflight_check(
+    ctx: &Context,
+    target_stack_id: StackId,
+    target_branch_name: &str,
+    source_stack_id: StackId,
+    subject_branch_name: &str,
+) -> Result<()> {
+    if source_stack_id == target_stack_id {
+        return Ok(());
+    }
+    let repo = ctx.repo.get()?;
+    let vb_state = VirtualBranchesHandle::new(ctx.project_data_dir());
+    let source_stack = vb_state.get_stack_in_workspace(source_stack_id)?;
+    let (subject_branch_steps, remaining_steps) =
+        extract_branch_steps(ctx, &repo, &source_stack, subject_branch_name)?;
+
+    // Source side: remaining commits must rebase cleanly without the moved branch.
+    check_rebase_for_conflicts(
+        ctx,
+        remaining_steps,
+        source_stack.merge_base(ctx)?,
+        "This move would cause a conflict in the source stack: \
+         other commits depend on the changes being moved.",
+    )?;
+
+    // Destination side: the moved branch commits must apply cleanly at the insertion point.
+    let destination_stack = vb_state.get_stack_in_workspace(target_stack_id)?;
+    let target_branch_oid = destination_stack
+        .branches()
+        .into_iter()
+        .find(|b| b.name == target_branch_name)
+        .context("Target branch not found in destination stack")?
+        .head_oid(&repo)?;
+    check_rebase_for_conflicts(
+        ctx,
+        subject_branch_steps,
+        target_branch_oid,
+        "This move would cause a conflict in the destination stack: \
+         the branch does not apply cleanly at the target location.",
+    )
 }
 
 pub(crate) fn move_branch(

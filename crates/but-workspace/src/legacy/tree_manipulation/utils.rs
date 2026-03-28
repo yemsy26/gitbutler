@@ -1,11 +1,77 @@
 //! Utility types related to discarding changes in the worktree.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use anyhow::{Result, bail};
+use but_ctx::Context;
 use but_rebase::{RebaseOutput, RebaseStep};
+use gix::prelude::ObjectIdExt as _;
 
 // Re-export from non-legacy location for backward compatibility
 pub use crate::tree_manipulation::{ChangesSource, create_tree_without_diff};
+
+/// Speculatively rebase `steps` onto `onto` and bail with `error_message` if any
+/// Pick commit lands as conflicted.
+///
+/// This is the shared building block for cross-stack move pre-flight checks.
+/// It must be called before modifying any stack state so that a failure leaves
+/// the repository unchanged.
+pub fn check_rebase_for_conflicts(
+    ctx: &Context,
+    steps: Vec<RebaseStep>,
+    onto: gix::ObjectId,
+    error_message: &str,
+) -> Result<()> {
+    let commit_ids: Vec<gix::ObjectId> = steps
+        .iter()
+        .filter_map(|s| {
+            if let RebaseStep::Pick { commit_id, .. } = s {
+                Some(*commit_id)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if commit_ids.is_empty() {
+        return Ok(());
+    }
+    let repo = ctx.repo.get()?;
+
+    // Commits already conflicted before our speculative rebase must not block
+    // the move — they were conflicted for unrelated reasons.
+    let already_conflicted: HashSet<gix::ObjectId> = commit_ids
+        .iter()
+        .filter(|&&id| {
+            but_core::Commit::from_id(id.attach(&repo))
+                .map(|c| c.is_conflicted())
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+
+    let mut rebase = but_rebase::Rebase::new(&repo, Some(onto), None)?;
+    rebase.rebase_noops(false);
+    rebase.steps(steps)?;
+    let output = rebase.rebase(&*ctx.cache.get_cache()?)?;
+
+    let old_to_new: HashMap<gix::ObjectId, gix::ObjectId> = output
+        .commit_mapping
+        .iter()
+        .map(|(_, old, new)| (*old, *new))
+        .collect();
+
+    for old_id in commit_ids {
+        if already_conflicted.contains(&old_id) {
+            continue;
+        }
+        let new_id = old_to_new.get(&old_id).copied().unwrap_or(old_id);
+        let commit = but_core::Commit::from_id(new_id.attach(&repo))?;
+        if commit.is_conflicted() {
+            bail!("{error_message}");
+        }
+    }
+    Ok(())
+}
 
 /// Takes a rebase output and returns the commit mapping with any extra
 /// mapping overrides provided.

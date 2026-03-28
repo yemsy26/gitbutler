@@ -1,12 +1,71 @@
 use anyhow::{Context as _, Result, anyhow, bail};
 use but_ctx::{Context, access::RepoExclusive};
 use but_rebase::RebaseStep;
-use but_workspace::legacy::stack_ext::StackExt;
+use but_workspace::legacy::{check_rebase_for_conflicts, stack_ext::StackExt};
 use gitbutler_stack::{StackId, VirtualBranchesHandle};
 use gitbutler_workspace::branch_trees::{WorkspaceState, update_uncommitted_changes};
 use serde::Serialize;
 
 use crate::VirtualBranchesExt;
+
+/// Pre-flight check for cross-stack commit moves.
+///
+/// Checks both sides of the move:
+/// 1. **Source**: rebases remaining source commits without the moved commit —
+///    bails if any would conflict (they depend on the commit being moved away).
+/// 2. **Destination**: rebases the moved commit onto the destination stack head —
+///    bails if it would conflict at the insertion point.
+///
+/// Must be called before `create_snapshot` so a rejection leaves no side-effects.
+pub(crate) fn preflight_check(
+    ctx: &Context,
+    target_stack_id: StackId,
+    subject_commit_oid: gix::ObjectId,
+    source_stack_id: StackId,
+) -> Result<()> {
+    let repo = ctx.repo.get()?;
+    repo.find_commit(subject_commit_oid)
+        .with_context(|| format!("commit {subject_commit_oid} to be moved could not be found"))?;
+    if source_stack_id == target_stack_id {
+        return Ok(());
+    }
+    let vb_state = ctx.virtual_branches();
+
+    // Source side: remaining commits must rebase cleanly without the moved commit.
+    let source_stack = vb_state
+        .try_stack(source_stack_id)?
+        .ok_or(anyhow!("Source stack not found"))?;
+    let remaining_steps: Vec<RebaseStep> = source_stack
+        .as_rebase_steps(ctx)?
+        .into_iter()
+        .filter(|s| match s {
+            RebaseStep::Pick { commit_id, .. } => *commit_id != subject_commit_oid,
+            _ => true,
+        })
+        .collect();
+    check_rebase_for_conflicts(
+        ctx,
+        remaining_steps,
+        source_stack.merge_base(ctx)?,
+        "This move would cause a conflict in the source stack: \
+         other commits depend on the changes being moved.",
+    )?;
+
+    // Destination side: the moved commit must apply cleanly at the insertion point.
+    let destination_stack = vb_state
+        .try_stack(target_stack_id)?
+        .ok_or(anyhow!("Destination branch not found"))?;
+    check_rebase_for_conflicts(
+        ctx,
+        vec![RebaseStep::Pick {
+            commit_id: subject_commit_oid,
+            new_message: None,
+        }],
+        destination_stack.head_oid(ctx)?,
+        "This move would cause a conflict in the destination stack: \
+         the commit does not apply cleanly at the target location.",
+    )
+}
 
 /// move a commit from one stack to another
 ///
@@ -20,8 +79,6 @@ pub(crate) fn move_commit(
 ) -> Result<Option<MoveCommitIllegalAction>> {
     let old_workspace = WorkspaceState::create(ctx, perm.read_permission())?;
     let mut vb_state = ctx.virtual_branches();
-    let repo = ctx.repo.get()?;
-
     let applied_stacks = vb_state
         .list_stacks_in_workspace()
         .context("failed to read virtual branches")?;
@@ -38,11 +95,7 @@ pub(crate) fn move_commit(
         .try_stack(target_stack_id)?
         .ok_or(anyhow!("Destination branch not found"))?;
 
-    repo.find_commit(subject_commit_oid)
-        .with_context(|| format!("commit {subject_commit_oid} to be moved could not be found"))?;
-
     take_commit_from_source_stack(ctx, &mut source_stack, subject_commit_oid)?;
-
     move_commit_to_destination_stack(&mut vb_state, ctx, destination_stack, subject_commit_oid)?;
 
     let new_workspace = WorkspaceState::create(ctx, perm.read_permission())?;
