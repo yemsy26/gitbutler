@@ -1,8 +1,5 @@
-export interface ConflictEntryPresence {
-	ours: boolean;
-	theirs: boolean;
-	ancestor: boolean;
-}
+export type { ConflictEntryPresence } from "@gitbutler/core/api";
+import type { ConflictEntryPresence } from "@gitbutler/core/api";
 
 export function emptyConflictEntryPresence(): ConflictEntryPresence {
 	return {

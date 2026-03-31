@@ -30,13 +30,29 @@ use std::{
 
 use but_schemars::SchemarEntry;
 
+struct Args {
+    output: PathBuf,
+    /// If non-empty, only types whose `type_name` starts with one of these
+    /// prefixes are included in the output.  Use Rust module-path syntax with
+    /// `::` separators, e.g. `gitbutler_branch_actions`.
+    source_crates: Vec<String>,
+}
+
 fn main() -> anyhow::Result<()> {
-    let output_path = parse_args()?;
+    let args = parse_args()?;
 
     // Collect schemas from the but-api schema registry
-    let schemas = collect_all_schemas()?;
+    let schemas = collect_all_schemas(&args.source_crates)?;
 
-    eprintln!("Collected {} unique type schemas", schemas.len());
+    eprintln!(
+        "Collected {} unique type schemas{}",
+        schemas.len(),
+        if args.source_crates.is_empty() {
+            String::new()
+        } else {
+            format!(" (filtered to: {})", args.source_crates.join(", "))
+        }
+    );
 
     // Convert schemas to JSON values for processing
     let json_schemas: Vec<(String, serde_json::Value)> = schemas
@@ -74,17 +90,18 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Write output
+    let output_path = &args.output;
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let mut final_output = ts_output.clone();
     if output_path.exists() {
-        let existing = std::fs::read_to_string(&output_path)?;
+        let existing = std::fs::read_to_string(output_path)?;
         final_output = format!("{}\n{}", existing, ts_output);
     }
 
-    std::fs::write(&output_path, &final_output)?;
+    std::fs::write(output_path, &final_output)?;
     eprintln!("Written to {}", output_path.display());
 
     Ok(())
@@ -104,8 +121,13 @@ struct CollectedSchemarEntry {
 /// Collect all registered type schemas.
 ///
 /// Returns a list of `(name, schema)` pairs for all registered types.
-/// This is used by the `but-ts` tool to produce TypeScript definitions.
-fn collect_all_schemas() -> anyhow::Result<Vec<(String, schemars::Schema)>> {
+/// When `source_crates` is non-empty, only types whose `type_name` starts
+/// with one of the provided crate-name prefixes are included in the output.
+/// Duplicate-name and missing-dep validation runs only on the filtered set,
+/// so name collisions from unrelated crates do not cause errors.
+fn collect_all_schemas(
+    source_crates: &[String],
+) -> anyhow::Result<Vec<(String, schemars::Schema)>> {
     let mut types = inventory::iter::<SchemarEntry>()
         .map(|s| CollectedSchemarEntry {
             name: (s.name)(),
@@ -114,6 +136,18 @@ fn collect_all_schemas() -> anyhow::Result<Vec<(String, schemars::Schema)>> {
             schema: (s.schema)(),
         })
         .collect::<Vec<_>>();
+
+    // Apply source-crate filter early so that validation only covers the
+    // types we actually intend to output.  This avoids false name-collision
+    // errors when unrelated crates happen to register a type with the same
+    // schema name (e.g. two different `Author` types from different crates).
+    if !source_crates.is_empty() {
+        types.retain(|t| {
+            source_crates
+                .iter()
+                .any(|prefix| t.type_name.starts_with(prefix.as_str()))
+        });
+    }
 
     // Order by registration location for a stable checking order
     types.sort_by_cached_key(|s| s.registration_location);
@@ -222,9 +256,10 @@ fn root_equals_def_inner(root_schema: &Value, def_schema: &Value, type_name: &st
     }
 }
 
-fn parse_args() -> anyhow::Result<PathBuf> {
+fn parse_args() -> anyhow::Result<Args> {
     let mut args = std::env::args().skip(1);
     let mut output = None;
+    let mut source_crates: Vec<String> = Vec::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--output" | "-o" => {
@@ -232,8 +267,16 @@ fn parse_args() -> anyhow::Result<PathBuf> {
                     anyhow::anyhow!("--output requires a path argument")
                 })?));
             }
+            "--source-crates" => {
+                let val = args.next().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "--source-crates requires a comma-separated list of crate prefixes"
+                    )
+                })?;
+                source_crates.extend(val.split(',').map(|s| s.trim().to_string()));
+            }
             "--help" | "-h" => {
-                eprintln!("Usage: but-ts --output <path>");
+                eprintln!("Usage: but-ts --output <path> [--source-crates <crate1,crate2,...>]");
                 std::process::exit(0);
             }
             other => {
@@ -241,7 +284,10 @@ fn parse_args() -> anyhow::Result<PathBuf> {
             }
         }
     }
-    output.ok_or_else(|| anyhow::anyhow!("--output is required"))
+    Ok(Args {
+        output: output.ok_or_else(|| anyhow::anyhow!("--output is required"))?,
+        source_crates,
+    })
 }
 
 /// Extract the `description` field from a JSON Schema value, if present.

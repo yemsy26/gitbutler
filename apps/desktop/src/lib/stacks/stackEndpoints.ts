@@ -9,7 +9,6 @@ import {
 } from "$lib/state/tags";
 import { isDefined } from "@gitbutler/ui/utils/typeguards";
 import { createEntityAdapter, type EntityState } from "@reduxjs/toolkit";
-import type { StackOrder } from "$lib/branches/branch";
 import type { Commit, CommitDetails, UpstreamCommit } from "$lib/branches/v3";
 import type { MoveCommitIllegalAction } from "$lib/commits/commit";
 import type { TreeChange, TreeChanges, TreeStats } from "$lib/hunks/change";
@@ -26,6 +25,7 @@ import type {
 } from "$lib/stacks/stack";
 import type { BackendEndpointBuilder } from "$lib/state/backendApi";
 import type { RejectionReason } from "$lib/state/uiState.svelte";
+import type { StackOrder } from "@gitbutler/core/api";
 import type { HunkAssignment } from "@gitbutler/core/api";
 
 export type { RejectionReason };

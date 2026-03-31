@@ -73,6 +73,27 @@ impl<const KIND: char> str::FromStr for Id<KIND> {
     }
 }
 
+#[cfg(feature = "export-ts")]
+impl<const KIND: char> ts_rs::TS for Id<KIND> {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name() -> String {
+        "string".to_owned()
+    }
+    fn inline() -> String {
+        "string".to_owned()
+    }
+    fn inline_flattened() -> String {
+        panic!("Id cannot be flattened")
+    }
+    fn decl() -> String {
+        panic!("Id cannot be declared")
+    }
+    fn decl_concrete() -> String {
+        panic!("Id cannot be declared")
+    }
+}
+
 #[cfg(feature = "export-schema")]
 impl<const KIND: char> schemars::JsonSchema for Id<KIND> {
     fn schema_name() -> std::borrow::Cow<'static, str> {

@@ -17,28 +17,38 @@ use serde::{Deserialize, Serialize};
 use crate::{BranchManagerExt, VirtualBranchesExt as _};
 
 #[derive(Serialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct NameAndStatus {
     pub name: String,
     pub status: BranchStatus,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(NameAndStatus);
 
 #[derive(Serialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct StackStatus {
     pub tree_status: TreeStatus,
     pub branch_statuses: Vec<NameAndStatus>,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(StackStatus);
 
 #[derive(Serialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "subject", rename_all = "camelCase")]
 pub enum TreeStatus {
     SaflyUpdatable,
     Conflicted,
     Empty,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(TreeStatus);
 
 #[derive(Serialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "subject", rename_all = "camelCase")]
 pub enum BranchStatus {
     SaflyUpdatable,
@@ -49,27 +59,41 @@ pub enum BranchStatus {
     },
     Empty,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(BranchStatus);
 
 #[derive(Serialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "subject", rename_all = "camelCase")]
 pub enum StackStatuses {
     UpToDate,
     UpdatesRequired {
         #[serde(rename = "worktreeConflicts")]
+        #[cfg_attr(feature = "export-schema", schemars(with = "Vec<String>"))]
         worktree_conflicts: Vec<BStringForFrontend>,
+        #[cfg_attr(
+            feature = "export-schema",
+            schemars(with = "Vec<(Option<String>, StackStatus)>")
+        )]
         statuses: Vec<(Option<StackId>, StackStatus)>,
     },
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(StackStatuses);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "subject", rename_all = "camelCase")]
 pub enum BaseBranchResolutionApproach {
     Rebase,
     Merge,
     HardReset,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(BaseBranchResolutionApproach);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", content = "subject", rename_all = "camelCase")]
 pub enum ResolutionApproach {
     Rebase,
@@ -77,21 +101,33 @@ pub enum ResolutionApproach {
     Unapply,
     Delete,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(ResolutionApproach);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct BaseBranchResolution {
     #[serde(with = "but_serde::object_id")]
+    #[cfg_attr(
+        feature = "export-schema",
+        schemars(schema_with = "but_schemars::object_id")
+    )]
     target_commit_oid: gix::ObjectId,
     approach: BaseBranchResolutionApproach,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(BaseBranchResolution);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrationOutcome {
     /// The list of branches that have been deleted as a result of the upstream integration
     deleted_branches: Vec<String>,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(IntegrationOutcome);
 
 impl StackStatus {
     fn create(tree_status: TreeStatus, branch_statuses: Vec<NameAndStatus>) -> Result<Self> {
@@ -139,12 +175,19 @@ impl StackStatus {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Resolution {
+    #[cfg_attr(
+        feature = "export-schema",
+        schemars(schema_with = "but_schemars::stack_id")
+    )]
     pub stack_id: StackId,
     pub approach: ResolutionApproach,
     pub delete_integrated_branches: bool,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(Resolution);
 
 enum IntegrationResult {
     UpdatedObjects {

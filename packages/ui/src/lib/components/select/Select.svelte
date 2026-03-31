@@ -1,5 +1,7 @@
 <script lang="ts" module>
-	type T = string;
+	type T = any | unknown | undefined;
+
+	type Modifiers = { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean };
 
 	export type SelectItem<T extends string = string> = {
 		label?: string;
@@ -12,9 +14,7 @@
 		| { label: string; value: T } // Regular items require label and value
 	);
 
-	type Modifiers = { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean };
-
-	interface Props {
+	export type SelectProps = {
 		id?: string;
 		label?: string;
 		disabled?: boolean;
@@ -39,10 +39,10 @@
 		autofocus?: boolean;
 		onselect?: (value: T, modifiers?: Modifiers) => void;
 		ontoggle?: (isOpen: boolean) => void;
-	}
+	};
 </script>
 
-<script lang="ts" generics="T extends string">
+<script lang="ts" generics="T extends string = string">
 	import Icon from "$components/Icon.svelte";
 	import Textbox from "$components/Textbox.svelte";
 	import ScrollableContainer from "$components/scroll/ScrollableContainer.svelte";
@@ -79,7 +79,7 @@
 		autofocus,
 		onselect,
 		ontoggle,
-	}: Props = $props();
+	}: SelectProps = $props();
 
 	let selectWrapperEl: HTMLElement;
 	let selectInputEl = $state<HTMLElement>();

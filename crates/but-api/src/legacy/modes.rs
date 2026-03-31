@@ -10,11 +10,14 @@ use tracing::instrument;
 use crate::json::Error;
 
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct HeadAndMode {
     pub head: Option<String>,
     pub operating_mode: OperatingMode,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(HeadAndMode);
 
 #[but_api]
 #[instrument(err(Debug))]
@@ -34,10 +37,13 @@ pub fn operating_mode(ctx: &Context) -> Result<HeadAndMode, Error> {
 }
 
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct HeadSha {
     head_sha: String,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(HeadSha);
 
 #[but_api]
 #[instrument(err(Debug))]

@@ -525,6 +525,7 @@ but_schemars::register_sdk_type!(BranchListingFilter);
 #[serde(rename_all = "camelCase")]
 pub struct BranchListing {
     /// The `identity` of the branch (e.g. `main`, `feature/branch`), excluding the remote name.
+    #[cfg_attr(feature = "export-schema", schemars(with = "String"))]
     pub name: BranchIdentity,
     /// This is a list of remotes that this branch can be found on (e.g. `origin`, `upstream` etc.),
     /// by collecting remotes from all local branches with the same identity that have a tracking setup.
@@ -788,9 +789,11 @@ pub fn get_branch_listing_details(
 
 /// Represents a fat struct with all the data associated with a branch
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "export-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchListingDetails {
     /// The name of the branch (e.g. `main`, `feature/branch`), excluding the remote name
+    #[cfg_attr(feature = "export-schema", schemars(with = "String"))]
     pub name: BranchIdentity,
     /// The number of lines added within the branch
     /// Since the virtual branch, local branch and the remote one can have different number of lines removed,
@@ -821,3 +824,5 @@ pub struct BranchListingDetails {
     /// The branch may or may not have a virtual branch associated with it.
     pub stack: Option<StackReference>,
 }
+#[cfg(feature = "export-schema")]
+but_schemars::register_sdk_type!(BranchListingDetails);

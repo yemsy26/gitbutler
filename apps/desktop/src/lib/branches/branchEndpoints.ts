@@ -7,15 +7,16 @@ import {
 } from "$lib/state/tags";
 import { createEntityAdapter, type EntityState } from "@reduxjs/toolkit";
 import type { BaseBranch, ForgeProvider, RemoteBranchInfo } from "$lib/baseBranch/baseBranch";
-import type { BranchListing, BranchListingDetails } from "$lib/branches/branchListing";
 import type { BackendEndpointBuilder } from "$lib/state/backendApi";
 import type {
 	BaseBranchResolution,
 	BaseBranchResolutionApproach,
-	BranchStatusesResponse,
+	BranchListing,
+	BranchListingDetails,
 	IntegrationOutcome,
 	Resolution,
-} from "$lib/upstream/types";
+	StackStatuses,
+} from "@gitbutler/core/api";
 
 export function buildBranchEndpoints(build: BackendEndpointBuilder) {
 	return {
@@ -102,7 +103,7 @@ export function buildBranchEndpoints(build: BackendEndpointBuilder) {
 
 		// ── Upstream Integration ─────────────────────────────────────
 		upstreamIntegrationStatuses: build.query<
-			BranchStatusesResponse,
+			StackStatuses,
 			{ projectId: string; targetCommitOid?: string }
 		>({
 			extraOptions: { command: "upstream_integration_statuses" },
@@ -130,7 +131,7 @@ export function buildBranchEndpoints(build: BackendEndpointBuilder) {
 		}),
 		resolveUpstreamIntegration: build.mutation<
 			string,
-			{ projectId: string; resolutionApproach: { type: BaseBranchResolutionApproach } }
+			{ projectId: string; resolutionApproach: BaseBranchResolutionApproach }
 		>({
 			extraOptions: {
 				command: `resolve_upstream_integration`,

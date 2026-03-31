@@ -1,7 +1,5 @@
-import {
-	emptyConflictEntryPresence,
-	type ConflictEntryPresence,
-} from "$lib/files/conflictEntryPresence";
+import { emptyConflictEntryPresence } from "$lib/files/conflictEntryPresence";
+import type { ConflictEntryPresence } from "@gitbutler/core/api";
 
 export class ConflictEntries {
 	public entries: Map<string, ConflictEntryPresence> = new Map();
